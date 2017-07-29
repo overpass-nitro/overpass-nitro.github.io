@@ -1,0 +1,74 @@
+﻿<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8" />
+	</head>
+	<body>
+		<script type="application/javascript">		
+			// besser: WebWorkers in script-only sandbox iframe --> https://github.com/asvd/jailed
+			// IE 10,11: Keine WebWorkers von Blobs (Stand 2013) --> soll in IE 11 inzwischen gehen, IE 10 end of life
+			// Chrome: Keine WebWorkers von Blobs in https-Umfeld bei Sandbox-Mode (security exception, da Blob als origin null und nicht als https zählt)
+			//         --> fixed seit Dezember 2016
+			// data-uris nur von Firefox für WebWorkers
+			// Frage: Kann man IFrame-Sandbox nachträglich ändern (dann erst mit allow-same-origin Scripte laden und danach same-origin entfernen)
+			// geht nicht - erst nach Reload des IFrames hat das Bedeutung
+			
+			var WorkerContainer = function(a_callback, a_data) {
+				this.worker = new Worker(URL.createObjectURL(new Blob([' \
+					onmessage = function(a_event) { \
+						var responseMethod = postMessage; \
+						try { \
+							(new Function("features", a_event.data.code))(a_event.data.features); \
+							responseMethod({type: "result", result: a_event.data.features}); \
+						} \
+						catch (error) { \
+							if ((typeof error === "object") && (error !== null) && (typeof error.message === "string")) { \
+								responseMethod({type: "error", result: error.message}); \
+							} \
+							else { \
+								responseMethod({type: "error", result: "Invalid error object."}); \
+							} \
+							throw error; \
+						} \
+					};'], {type: 'application/javascript'})));
+				this.workerOnMessage = (function(a_event) {
+					this.worker.removeEventListener('message', this.workerOnMessage);
+					this.worker.terminate();
+					a_callback(a_event.data);				
+				}).bind(this);
+				this.worker.addEventListener('message', this.workerOnMessage);
+				this.worker.postMessage(a_data);
+			}
+			WorkerContainer.prototype.cancel = function() {
+				this.worker.removeEventListener('message', this.workerOnMessage);
+				this.worker.terminate();
+			};
+			
+			var MessageProxy = function() {
+				this.workerContainer = null;
+				this.workerContainerCallback = (function(a_data) {
+					window.removeEventListener('message', this.windowOnMessage);
+					window.parent.postMessage(a_data, window.location.protocol === 'file:' ? '*' : window.location.origin);
+				}).bind(this);
+				this.windowOnMessage = (function(a_event) {
+					if ((a_event.source === window.parent) && ((window.location.protocol === 'file:') || (a_event.origin === window.location.origin))) {			
+						if ((typeof a_event.data === 'object') && (a_event.data !== null) && (typeof a_event.data.type === 'string')) {
+							if ((a_event.data.type === 'start') && (Array.isArray(a_event.data.features)) && (typeof a_event.data.code === 'string') && (this.workerContainer === null)) {
+								this.workerContainer = new WorkerContainer(this.workerContainerCallback, a_event.data);
+							}
+							else if (a_event.data.type === 'cancel') {
+								window.removeEventListener('message', this.windowOnMessage);
+								if (this.workerContainer !== null) {
+									this.workerContainer.cancel();
+								}
+							}
+						}
+					}
+				}).bind(this);
+				window.addEventListener('message', this.windowOnMessage);
+			};
+			
+			var messageProxy = new MessageProxy();
+		</script>
+	</body>
+</html>

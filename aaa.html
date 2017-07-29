@@ -1,0 +1,58 @@
+﻿<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8" />
+	</head>
+	<body>
+		<script type="application/javascript">
+			var ScriptContainer = function() {			
+				this.windowOnMessage = (function(a_event) {
+					if (a_event.source === this.scriptFrame.contentWindow) {
+						// because of sandboxing source origin is not a valid url
+						window.removeEventListener('message', this.windowOnMessage);
+						document.body.removeChild(this.scriptFrame);
+						if ((typeof a_event.data !== 'object') || (a_event.data === null) || (typeof a_event.data.type !== 'string')) {
+							throw (new Error('Invalid worker response object.'));
+						}
+						if (a_event.data.type === 'error') {
+							if (typeof a_event.data.result !== 'string') {
+								throw (new Error('Invalid worker error message.'));
+							}
+							document.body.appendChild(document.createTextNode(a_event.data.result));
+						}
+						if (a_event.data.type === 'result') {
+							if (!Array.isArray(a_event.data.result)) {
+								throw (new Error('Invalid worker result message.'));
+							}
+							document.body.appendChild(document.createTextNode(a_event.data.result[0]));
+						}
+					}
+				}).bind(this);
+				this.scriptFrameOnLoad = (function(a_event) {
+					this.scriptFrame.removeEventListener('load', this.scriptFrameOnLoad);
+					window.addEventListener('message', this.windowOnMessage);
+					// because of sandboxing target origin is not a valid url
+					a_event.target.contentWindow.postMessage({type: 'start', code: 'features[0] = features[0] + "haha";', features: ['huhu']}, '*');
+				}).bind(this);	
+				this.scriptFrame = document.createElement('iframe');
+				this.scriptFrame.src = 'bbb.html';
+				this.scriptFrame.style = 'visibility:hidden; width:0; height:0; border:none;';
+				// allow-same-origin necessary for file protocol to prevent SecurityError on IE/Edge
+				this.scriptFrame.sandbox = window.location.protocol === 'file:' ? 'allow-scripts allow-same-origin' : 'allow-scripts';
+				this.scriptFrame.addEventListener('load', this.scriptFrameOnLoad);
+				document.body.appendChild(this.scriptFrame);
+			}
+			ScriptContainer.prototype.cancel = function() {
+				if (this.scriptFrame.parentNode !== null) {
+					this.scriptFrame.removeEventListener('load', this.scriptFrameOnLoad);
+					window.removeEventListener('message', this.windowOnMessage);	
+					// because of sandboxing target origin is not a valid url
+					this.scriptFrame.contentWindow.postMessage({type: 'cancel'}, '*');
+					document.body.removeChild(this.scriptFrame);
+				}
+			};
+
+			var scriptContainer = new ScriptContainer();
+		</script>
+	</body>
+</html>
