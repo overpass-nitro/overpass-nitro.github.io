@@ -9,6 +9,7 @@
 				this.windowOnMessage = (function(a_event) {
 					if (a_event.source === this.scriptFrame.contentWindow) {
 						// because of sandboxing source origin is not a valid url
+						console.log('Origin:' + a_event.origin);
 						window.removeEventListener('message', this.windowOnMessage);
 						document.body.removeChild(this.scriptFrame);
 						if ((typeof a_event.data !== 'object') || (a_event.data === null) || (typeof a_event.data.type !== 'string')) {
